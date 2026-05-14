@@ -518,7 +518,7 @@ export default function App() {
                         <div key={id} className="row" style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8 }}>
                           <Chk c={dn} o={() => tog(id)} />
                           <Str a={wk} o={() => togW(id)} />
-                          <span onClick={() => { setView(isB ? "blocks" : "problems"); setExp(id); setShowWeak(false); setSearchQ(""); }} style={{ fontSize: 14, color: dn ? C.dim : "#d1d5db", textDecoration: dn ? "line-through" : "none", flex: 1, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>{it.n} <span style={{ fontSize: 11, color: C.accent, opacity: 0.6 }}>→</span></span>
+                          <span onClick={() => { setView(isB ? "blocks" : "problems"); setExp(id); setShowWeak(false); setSearchQ(""); }} style={{ fontSize: 14, color: dn ? C.dim : C.headText, textDecoration: dn ? "line-through" : "none", flex: 1, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>{it.n} <span style={{ fontSize: 11, color: C.accent, opacity: 0.6 }}>→</span></span>
                           {!isB && it.d && DC[it.d] && <Bdg t={it.d} c={DC[it.d].text} bg={DC[it.d].bg} />}
                         </div>
                       );
@@ -558,7 +558,7 @@ export default function App() {
                     <Str a={wk} o={() => togW(b.id)} />
                     <div style={{ width: 32, height: 32, borderRadius: 8, background: C.card2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{b.i}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: dn ? C.dim : "#e5e7eb", fontFamily: "'DM Sans', sans-serif" }}>{b.n}</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: dn ? C.dim : C.headText, fontFamily: "'DM Sans', sans-serif" }}>{b.n}</div>
                       <div style={{ fontSize: 12, color: C.dim, fontFamily: "'DM Sans', sans-serif", marginTop: 1 }}>{b.cat} · Depth {b.d}</div>
                     </div>
                     <button className="btn" onClick={() => setExp(op ? null : b.id)} style={{ background: op ? C.accent + "10" : "transparent", border: "1px solid " + (op ? C.accent + "30" : C.border), borderRadius: 7, color: op ? C.accent : C.dim, padding: "5px 8px", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>{op ? "▲" : "▼"}</button>
@@ -581,16 +581,16 @@ export default function App() {
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                         <div style={{ background: "linear-gradient(135deg, " + C.green + "08, transparent)", borderRadius: 8, padding: "12px 14px", border: "1px solid " + C.green + "15" }}>
                           <div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 5, letterSpacing: "0.5px" }}>✅ USE WHEN</div>
-                          <div style={{ fontSize: 14, color: "#4ade80", lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{b.use}</div>
+                          <div style={{ fontSize: 14, color: C.green, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{b.use}</div>
                         </div>
                         <div style={{ background: "linear-gradient(135deg, " + C.red + "08, transparent)", borderRadius: 8, padding: "12px 14px", border: "1px solid " + C.red + "15" }}>
                           <div style={{ fontSize: 11, color: C.red, fontWeight: 700, marginBottom: 5, letterSpacing: "0.5px" }}>❌ DON'T USE</div>
-                          <div style={{ fontSize: 14, color: "#f87171", lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{b.dont}</div>
+                          <div style={{ fontSize: 14, color: C.red, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{b.dont}</div>
                         </div>
                       </div>
                       <div style={{ background: "linear-gradient(135deg, " + C.accent + "08, transparent)", borderRadius: 8, padding: "12px 14px", border: "1px solid " + C.accent + "15" }}>
                         <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginBottom: 5, letterSpacing: "0.5px" }}>🌍 REAL WORLD EXAMPLE</div>
-                        <div style={{ fontSize: 14, color: "#fbbf24", lineHeight: 1.7, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{b.rw}</div>
+                        <div style={{ fontSize: 14, color: C.accent, lineHeight: 1.7, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{b.rw}</div>
                       </div>
                     </div>
                   )}
@@ -632,7 +632,7 @@ export default function App() {
                         <Chk c={dn} o={() => tog(p.id)} />
                         <Str a={wk} o={() => togW(p.id)} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 600, color: dn ? C.dim : "#e5e7eb", textDecoration: dn ? "line-through" : "none", fontFamily: "'DM Sans', sans-serif" }}>{p.n}</div>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: dn ? C.dim : C.headText, textDecoration: dn ? "line-through" : "none", fontFamily: "'DM Sans', sans-serif" }}>{p.n}</div>
                           <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
                             {p.tags.map(t => <span key={t} style={{ fontSize: 12, color: C.dim, background: C.card2, padding: "2px 6px", borderRadius: 4, border: "1px solid " + C.border, fontFamily: "'DM Sans', sans-serif" }}>{t}</span>)}
                           </div>
@@ -653,7 +653,7 @@ export default function App() {
                             })}
                           </div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <a href={p.v} target="_blank" rel="noopener noreferrer" className="btn" style={{ padding: "7px 14px", borderRadius: 8, background: "linear-gradient(135deg, rgba(239,68,68,0.08), rgba(239,68,68,0.04))", border: "1px solid rgba(239,68,68,0.15)", color: "#f87171", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>▶ Watch Video</a>
+                            <a href={p.v} target="_blank" rel="noopener noreferrer" className="btn" style={{ padding: "7px 14px", borderRadius: 8, background: "linear-gradient(135deg, rgba(239,68,68,0.08), rgba(239,68,68,0.04))", border: "1px solid rgba(239,68,68,0.15)", color: C.red, fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>▶ Watch Video</a>
                             <button className="btn" onClick={() => { setEditNote(editNote === p.id ? null : p.id); setNoteText(notes[p.id] || ""); }} style={{ padding: "7px 14px", borderRadius: 8, background: editNote === p.id ? C.accent + "10" : "transparent", border: "1px solid " + (editNote === p.id ? C.accent + "30" : C.border), color: editNote === p.id ? C.accent : C.dim, fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>📝 Notes{notes[p.id] ? " ✓" : ""}</button>
                           </div>
                           {editNote === p.id && (
@@ -811,11 +811,11 @@ export default function App() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <div style={{ background: "linear-gradient(135deg, " + C.green + "06, transparent)", padding: "8px 10px", borderRadius: 8, border: "1px solid " + C.green + "12" }}>
                     <div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 3, letterSpacing: "0.5px" }}>✅ GOOD</div>
-                    <div style={{ fontSize: 13, color: "#4ade80", lineHeight: 1.5, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{r.g}</div>
+                    <div style={{ fontSize: 13, color: C.green, lineHeight: 1.5, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{r.g}</div>
                   </div>
                   <div style={{ background: "linear-gradient(135deg, " + C.red + "06, transparent)", padding: "8px 10px", borderRadius: 8, border: "1px solid " + C.red + "12" }}>
                     <div style={{ fontSize: 11, color: C.red, fontWeight: 700, marginBottom: 3, letterSpacing: "0.5px" }}>❌ BAD</div>
-                    <div style={{ fontSize: 13, color: "#f87171", lineHeight: 1.5, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{r.b}</div>
+                    <div style={{ fontSize: 13, color: C.red, lineHeight: 1.5, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{r.b}</div>
                   </div>
                 </div>
               </div>
@@ -854,7 +854,7 @@ export default function App() {
                         {ht.tips.map((tip, ti) => (
                           <div key={ti} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "flex-start" }}>
                             <span style={{ color: C.green, fontSize: 11, marginTop: 4, flexShrink: 0 }}>●</span>
-                            <span style={{ fontSize: 14, color: "#4ade80", lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{tip}</span>
+                            <span style={{ fontSize: 14, color: C.green, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif", opacity: 0.8 }}>{tip}</span>
                           </div>
                         ))}
                       </div>
@@ -933,9 +933,9 @@ export default function App() {
                   <div key={ri} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: ri < COMPS[compIdx].rows.length - 1 ? "1px solid " + C.border : "none" }}>
                     <div style={{ fontSize: 13, color: C.dim, fontWeight: 700, marginBottom: 5, fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.5px" }}>{r.k}</div>
                     <div style={{ display: "grid", gridTemplateColumns: has3 ? "1fr 1fr 1fr" : "1fr 1fr", gap: 6 }}>
-                      <div style={{ fontSize: 13, color: "#93c5fd", lineHeight: 1.5, background: C.blue + "08", padding: "6px 10px", borderRadius: 6, border: "1px solid " + C.blue + "12", fontFamily: "'DM Sans', sans-serif" }}>{r.a}</div>
-                      <div style={{ fontSize: 13, color: "#fdba74", lineHeight: 1.5, background: C.orange + "08", padding: "6px 10px", borderRadius: 6, border: "1px solid " + C.orange + "12", fontFamily: "'DM Sans', sans-serif" }}>{r.b}</div>
-                      {has3 && <div style={{ fontSize: 13, color: "#a78bfa", lineHeight: 1.5, background: C.purple + "08", padding: "6px 10px", borderRadius: 6, border: "1px solid " + C.purple + "12", fontFamily: "'DM Sans', sans-serif" }}>{r.c}</div>}
+                      <div style={{ fontSize: 13, color: C.blue, lineHeight: 1.5, background: C.blue + "08", padding: "6px 10px", borderRadius: 6, border: "1px solid " + C.blue + "12", fontFamily: "'DM Sans', sans-serif" }}>{r.a}</div>
+                      <div style={{ fontSize: 13, color: C.orange, lineHeight: 1.5, background: C.orange + "08", padding: "6px 10px", borderRadius: 6, border: "1px solid " + C.orange + "12", fontFamily: "'DM Sans', sans-serif" }}>{r.b}</div>
+                      {has3 && <div style={{ fontSize: 13, color: C.purple, lineHeight: 1.5, background: C.purple + "08", padding: "6px 10px", borderRadius: 6, border: "1px solid " + C.purple + "12", fontFamily: "'DM Sans', sans-serif" }}>{r.c}</div>}
                     </div>
                   </div>
                   );
@@ -1350,7 +1350,7 @@ export default function App() {
                         <span style={{ fontSize: 11, color: sevColor, background: sevColor + "12", padding: "1px 6px", borderRadius: 4, fontWeight: 700, textTransform: "uppercase" }}>{ap.severity}</span>
                       </div>
                       <div style={{ fontSize: 14, color: C.green, lineHeight: 1.7, fontFamily: "'DM Sans', sans-serif", background: C.green + "06", padding: "8px 10px", borderRadius: 6, border: "1px solid " + C.green + "10", marginTop: 4 }}>
-                        ✅ <span style={{ color: "#4ade80" }}>{ap.fix}</span>
+                        ✅ <span style={{ color: C.green }}>{ap.fix}</span>
                       </div>
                     </div>
                   </div>
@@ -1391,13 +1391,13 @@ export default function App() {
               </div>
             ))}
             <div style={{ ...cs, padding: "14px", marginTop: 20, borderColor: C.red + "10" }}>
-              <button className="btn" onClick={reset} style={{ width: "100%", padding: "10px", borderRadius: 8, background: "linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.02))", border: "1px solid rgba(239,68,68,0.12)", color: "#f87171", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", fontWeight: 600, letterSpacing: "0.5px" }}>🗑️ Reset All Progress</button>
+              <button className="btn" onClick={reset} style={{ width: "100%", padding: "10px", borderRadius: 8, background: "linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.02))", border: "1px solid rgba(239,68,68,0.12)", color: C.red, fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", fontWeight: 600, letterSpacing: "0.5px" }}>🗑️ Reset All Progress</button>
             </div>
           </div>
         )}
 
         <div style={{ textAlign: "center", padding: "24px 0 12px", marginTop: 20 }}>
-          <div style={{ fontSize: 12, color: "#1a1d2e", letterSpacing: "3px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Trade-offs, Not Textbook Answers</div>
+          <div style={{ fontSize: 12, color: C.muted, letterSpacing: "3px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Trade-offs, Not Textbook Answers</div>
         </div>
       </div>
 
