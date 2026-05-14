@@ -653,6 +653,43 @@ export const DEEP_DIVES = [
       { t: "Using ZooKeeper/etcd", body: "Create ephemeral node /leader. First to create wins. Others watch for deletion. Leader crashes → node deleted → watchers notified → new election. Used by Kafka, HBase, Solr." },
       { t: "Split Brain Prevention", body: "Quorum requirement: only majority partition can elect leader. Fencing tokens: monotonically increasing token ensures old leader can't make changes after new leader elected." },
     ]},
+  { id: "dd15", n: "Search Systems", i: "🔍", c: DARK.cyan, cat: "Search", summary: "How full-text search works — inverted index, analysis, and ranking. The engine behind Elasticsearch.",
+    sections: [
+      { t: "Inverted Index", body: "The core data structure. Maps each term → list of doc IDs containing it: 'redis' → [doc3, doc8, doc40]. Built by tokenizing every document at write time. It's the opposite of a forward index (doc → its terms), and it's what makes search O(1) on the term instead of scanning every doc." },
+      { t: "Analysis / Tokenization", body: "Before indexing, text is normalized: lowercase, remove stopwords (the, a, is), stemming ('running'/'ran' → 'run'), optional synonyms. The search query passes through the SAME analyzer — that's why 'Running Shoes' matches a doc containing 'run shoe'." },
+      { t: "Ranking — BM25", body: "Which results come first? TF-IDF scores by term frequency × inverse document frequency (rare words matter more). BM25 is the modern default — adds term-frequency saturation and document-length normalization so long docs don't unfairly win. Elasticsearch uses BM25." },
+      { t: "Sharding & Scatter-Gather", body: "The index is split into shards by doc-ID hash; each shard is a self-contained Lucene index. A query is sent to ALL shards in parallel (scatter), each returns its top-K, and the coordinator merges + re-ranks (gather). Replicas serve reads and provide failover." },
+      { t: "Near-Real-Time", body: "New docs land in an in-memory buffer, flushed to a new immutable segment roughly every 1s (the 'refresh interval'). Segments are merged in the background. This is why Elasticsearch is 'near' real-time — a write isn't searchable for ~1s." },
+      { t: "Interview Tip", body: "When asked 'how do you implement search?': 'Inverted index in Elasticsearch, BM25 ranking, sharded by doc ID with scatter-gather across shards. For autocomplete I'd use a separate edge-ngram index or a trie — different access pattern.'" },
+    ]},
+  { id: "dd16", n: "Caching Strategies", i: "⚡", c: DARK.red, cat: "Caching", summary: "Where to cache, how to keep it fresh, how to evict — and the failure modes that bite in production.",
+    sections: [
+      { t: "Read/Write Patterns", body: "Cache-aside (app checks cache, fills on miss — the default). Read-through (cache itself fetches on miss). Write-through (write cache + DB together — always fresh, slower writes). Write-behind (write cache, async-flush to DB — fast, risk of loss on crash)." },
+      { t: "Eviction Policies", body: "LRU (least recently used — the safe default). LFU (least frequently used — better when access is skewed and some keys are permanently hot). TTL (time-based — simplest). Redis uses an approximated LRU/LFU to avoid the cost of exact tracking." },
+      { t: "Invalidation", body: "'One of the two hard problems in CS.' Options: TTL (simple, accepts bounded staleness), write-through (always fresh), event-based (publish a change event → invalidate the key). Stale cache is one of the most common production bugs — be explicit about your strategy." },
+      { t: "Cache Stampede", body: "A hot key expires → thousands of requests miss simultaneously and all hit the DB (thundering herd). Fixes: single-flight lock (one request refills, others wait), probabilistic early expiration, or stale-while-revalidate (serve stale, refresh in the background)." },
+      { t: "Penetration & Avalanche", body: "Penetration: repeated queries for keys that don't exist bypass the cache entirely — fix by caching the null result or front it with a Bloom filter. Avalanche: many keys expire at the same instant — fix by adding random jitter to TTLs." },
+      { t: "Interview Tip", body: "'I'd use cache-aside with Redis, LRU eviction, a TTL of ~5min. For the hot-key risk I'd add single-flight locking, and cache negative lookups to prevent penetration.' Naming the failure modes is what signals senior-level thinking." },
+    ]},
+  { id: "dd17", n: "Sharding Strategies", i: "🗂️", c: DARK.orange, cat: "Storage", summary: "Splitting data across nodes — range vs hash vs geo — and the genuinely hard part: resharding without downtime.",
+    sections: [
+      { t: "Why Shard", body: "A single DB node hits real limits — roughly 1TB of data or ~5K writes/sec before it struggles. Sharding is horizontal partitioning: each shard is an independent DB holding a subset of the data. Reach for it only after read replicas and caching aren't enough." },
+      { t: "Range-Based", body: "Shard by key ranges — users A–M on shard 1, N–Z on shard 2; or by date. Pro: range queries ('all orders in March') hit one shard. Con: hot shards — the latest date range or a popular alphabet range gets disproportionate traffic." },
+      { t: "Hash-Based", body: "shard = hash(key) % N. Pro: even, predictable distribution. Con: range queries must scatter across all shards, and changing N reshuffles almost everything — which is exactly why consistent hashing exists (only ~1/N keys move when a node is added)." },
+      { t: "Geo / Directory-Based", body: "Geo: shard by region (EU users in the EU shard) — great for latency and data-residency law. Directory: a lookup service maps key → shard, maximally flexible but the directory becomes a bottleneck and a single point of failure." },
+      { t: "Choosing the Shard Key", body: "The most important decision. The key needs high cardinality, evenly distributed access, and should match your dominant query pattern. A bad key creates hot shards. Composite keys like (user_id, timestamp) often balance distribution and query locality." },
+      { t: "Resharding", body: "The hard part — adding capacity without downtime. Consistent hashing minimizes key movement. The migration pattern: dual-write to old + new shards, backfill historical data, verify, then cut reads over. Vitess (MySQL) and Citus (Postgres) automate this." },
+      { t: "Interview Tip", body: "'I'd shard by user_id using consistent hashing — even distribution and minimal resharding cost. The trade-off is cross-user queries need scatter-gather, so I'd keep those rare or denormalize.'" },
+    ]},
+  { id: "dd18", n: "Multi-Region & Geo-Distribution", i: "🌍", c: DARK.blue, cat: "Distributed", summary: "Running across regions for latency and disaster recovery — and the consistency price you pay for writes.",
+    sections: [
+      { t: "Why Multi-Region", body: "Three drivers: latency (serve users from a nearby region — 20ms instead of 150ms), disaster recovery (survive a full region outage), and data-residency law (GDPR requires EU user data to physically stay in the EU)." },
+      { t: "Active-Passive", body: "One region serves all traffic; others are warm standbys replicating from it. Failover is a DNS or global-LB switch. Simple and easy to reason about, but you pay for idle capacity and failover has a lag (DNS TTL, replica catch-up)." },
+      { t: "Active-Active", body: "Every region serves live traffic. Maximum utilization and near-instant failover. The hard part: writes happen in multiple regions concurrently, so you must resolve conflicts — this is where most of the complexity lives." },
+      { t: "The Write Problem", body: "Cross-region replication has ~80–150ms of latency, so you can't have synchronous strong consistency cheaply. Options: a single global write-leader (simple, but far users get slow writes), per-region leaders + conflict resolution (CRDTs or last-writer-wins), or Spanner-style synchronized clocks (TrueTime)." },
+      { t: "Routing Users", body: "GeoDNS or anycast routes each user to their nearest healthy region. Global load balancers (Cloudflare, AWS Global Accelerator) add health-based failover so a region going down reroutes traffic automatically." },
+      { t: "Interview Tip", body: "'For a global app I'd go active-active with per-region read replicas. Writes route to a region leader; for conflict-prone data I'd use CRDTs or last-writer-wins. The honest trade-off: cross-region consistency becomes eventual — fine for feeds, not for a bank ledger.'" },
+    ]},
 ];
 
 export const TRADEOFFS = [
