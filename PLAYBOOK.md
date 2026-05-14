@@ -4,8 +4,11 @@ A self-contained recipe to ship a **React (CRA)** app with:
 - Per-user persistence via Supabase (Postgres + Row-Level Security)
 - Email magic-link auth (no OAuth setup needed)
 - Free Vercel deploy from GitHub
+- **Phase 2 (sections 11-13):** TypeScript conversion, modular file structure, UI polish
 
 **How to use:** fill in the **Parameters** section below, hand this file to Claude, and say "execute the playbook." Claude will do everything except the steps explicitly marked **(human)** — those require your browser session in Supabase, GitHub, or Vercel.
+
+**Phases:** sections 1-10 take a fresh app to a deployed, auth-gated app. Sections 11-13 are *enhancements* — run them on a working app (after section 10, or on an existing app) to add TypeScript, split a monolithic `App.js`, and polish the UI.
 
 ---
 
@@ -432,6 +435,202 @@ Open `VERCEL_URL` in an **incognito window** (no cached session). You should:
 
 ---
 
+## 11. Convert to TypeScript (loose mode)
+
+> **Run this on a working app** (after section 10, or on any existing CRA app).
+
+### 11a. ⚠️ Install the RIGHT versions
+
+```bash
+npm install --save-dev typescript@^4.9.5 "@types/react@^18.3.3" "@types/react-dom@^18.3.0" "@types/node@^20"
+```
+
+**CRITICAL — do not use TypeScript 5.x.** `react-scripts@5.0.1` declares
+`peerOptional typescript@"^3.2.1 || ^4"`. Local `npm install` is lenient and
+*will* let TS 5 through — but Vercel runs `npm ci`, which strictly enforces
+peer deps and fails with `ERESOLVE` before the build even starts. Symptom:
+local builds pass, Vercel never deploys. Pin **`typescript@^4.9.5`** (last 4.x).
+Same logic: keep `@types/react` on **18.x** (matches React 18), not 19.x.
+
+### 11b. Create `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "es2018",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}
+```
+
+### 11c. Rename source files (preserve git history)
+
+```bash
+git mv src/supabase.js src/supabase.ts
+git mv src/index.js src/index.tsx
+git mv src/App.js src/App.tsx
+```
+
+### 11d. Add `src/global.d.ts` (types the `window.storage` shim)
+
+```ts
+interface StorageShim {
+  get: (key: string) => Promise<{ value: string } | null>;
+  set: (key: string, value: string) => Promise<{ value: string } | null>;
+}
+interface Window {
+  storage?: StorageShim;
+}
+```
+
+### 11e. Add `src/types.ts` (shared app types — adapt the `UserData` shape to your app)
+
+```ts
+export type ThemeName = "dark" | "light";
+
+export interface UserData {
+  // ...whatever your app persists. Example:
+  done: Record<string, boolean>;
+  notes: Record<string, string>;
+  theme?: ThemeName;
+}
+```
+
+### 11f. Fix the common build errors (loose mode — `any` is acceptable here)
+
+Run `CI=true npm run build` and fix what it reports. The recurring ones:
+
+| Error | Fix |
+|---|---|
+| Inferred-prop-type conflict on an inline component (`const B = ({ x, y }) =>`) | Annotate the destructured props: `({ x, y }: any)` |
+| `Property 'x' does not exist on type 'unknown'` from `Object.entries(...)` | Type the source state: `useState<UserData>({...})` |
+| `useState(null)` then `.foo` access fails | `useState<MyType \| null>(null)` (or `useState<any>(null)`) |
+| `Type 'string' is not assignable to 'TextAlign'` on a style **const** | Annotate it `: React.CSSProperties` and add `import React from "react"` |
+| Mixed array (`[...A, ...B]`) → union-type access errors | Annotate `const items: any[] = [...]` |
+| `'X' is defined but never used` | Remove the unused import (CI mode treats it as an error) |
+
+### 11g. Verify like Vercel does
+
+```bash
+rm -rf node_modules && npm ci && CI=true npm run build
+```
+
+**Always test with `npm ci`, not just `npm install`** — see section 11a.
+
+---
+
+## 12. Split the monolith into modules
+
+> Goal: a 2,000+ line `App.tsx` → a thin `App.tsx` + focused modules.
+
+Recommended target structure:
+```
+src/
+  App.tsx          (orchestrator — state, effects, view routing)
+  index.tsx
+  supabase.ts
+  types.ts
+  global.d.ts
+  theme.ts         (color palettes / design tokens)
+  data.ts          (all static content arrays/constants)
+  diagrams.tsx     (SVG / chart components, if any)
+  components/      (leaf components: Toast, Badge, LoginGate, Header, ...)
+```
+
+### 12a. Extract `theme.ts`
+Move palette/token constants out. Pure data, zero dependencies — safest first move.
+
+### 12b. Extract `data.ts`
+Move all static content constants. **Gotcha:** if a data constant references a
+theme color (e.g. `c: C.purple`) and `C` is a module-level value frozen at load
+time, substitute the literal/frozen reference (e.g. `c: DARK.purple`) so the
+extracted file has no dependency on mutable app state.
+
+### 12c. Extract components that use a *mutable* module-level theme
+If your app has a `let C = DARK` reassigned each render, components in other files
+can't see it. Pattern: give the new module its own `let C` plus a setter, and call
+the setter from `App`'s render:
+```ts
+// diagrams.tsx
+import { DARK, LIGHT } from "./theme";
+let C = DARK;
+export const setDiagramTheme = (isDark: boolean) => { C = isDark ? DARK : LIGHT; };
+```
+```tsx
+// App.tsx render — keep in sync each render
+C = theme === "dark" ? DARK : LIGHT;
+setDiagramTheme(theme === "dark");
+```
+
+### 12d. Extract leaf components into `components/`
+Components that need the theme take it as a prop: `<LoginGate C={C} />`. Components
+with self-contained state (e.g. a login form) should *own that state* internally —
+move the `useState`s out of `App` and into the component.
+
+**After each extraction, run `CI=true npm run build`.** Commit per logical group so a
+broken step is easy to bisect.
+
+---
+
+## 13. UI polish checklist
+
+Safe, high-value passes — all additive, low regression risk.
+
+### 13a. Font scale
+If text is cramped, bump every `fontSize` proportionally (e.g. +3px) in **descending
+order** so replacements don't compound:
+```bash
+sed -i -E 's/fontSize: 20\b/fontSize: 23/g; s/fontSize: 18\b/fontSize: 21/g; ...' src/App.tsx
+```
+
+### 13b. Widen layout
+`sed -i -E 's/maxWidth: 1100\b/maxWidth: 1400/g' src/App.tsx`
+
+### 13c. Toast notifications
+Add a `toast` state + a `showToast(msg, kind?)` helper, fire it from your `save()`
+function, render a fixed-position `<ToastBar>` component. Auto-dismiss ~1.8s.
+
+### 13d. Global CSS polish (add to your `<style>` block or index.css)
+```css
+html { scroll-behavior: smooth; }
+body { line-height: 1.55; -webkit-text-size-adjust: 100%; }
+button, input, textarea, a { -webkit-tap-highlight-color: transparent; }
+*:focus-visible { outline: 2px solid ACCENT; outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+@media (max-width: 640px) {
+  .card:hover, .btn:hover { transform: none; }
+}
+```
+
+### 13e. ⚠️ Hardcoded-color audit (catches text invisible in one theme)
+The #1 theming bug: a color hardcoded for dark mode (e.g. `"#e5e7eb"`) is invisible
+on a light background, and vice-versa. Find them:
+```bash
+grep -noE 'color: "#[0-9a-fA-F]{3,8}"' src/App.tsx          # direct
+grep -noE 'color: [^,}]*"#[0-9a-fA-F]{3,8}"' src/App.tsx     # incl. ternaries
+```
+Replace each with a theme token (`C.headText`, `C.green`, etc.). The only hardcoded
+colors that are OK are ones on a fixed-color background (e.g. `#000` on an amber button).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -442,6 +641,8 @@ Open `VERCEL_URL` in an **incognito window** (no cached session). You should:
 | Magic link redirects to localhost from production | Site URL not updated | Step 9 |
 | User signs in but sees blank app / no data | RLS policy missing | Re-run step 5b's `create policy` blocks |
 | Vercel build fails with `Treating warnings as errors` | CRA lints in CI mode | Fix the actual warning (don't suppress); or, last resort, set `CI=false` in Vercel env vars |
+| **Local build passes but Vercel never deploys** | `npm ci` hit an `ERESOLVE` peer-dep conflict (often TypeScript 5.x vs react-scripts 5) | Pin `typescript@^4.9.5`; verify with `rm -rf node_modules && npm ci` before pushing (section 11a/11g) |
+| **Text invisible in light (or dark) mode** | A color hardcoded for one theme | Hardcoded-color audit, section 13e |
 | `Failed to fetch dynamically imported module` after deploy | Old service worker cached | Hard refresh; or disable PWA if you don't need it |
 
 ---
@@ -468,4 +669,7 @@ If the user pastes this playbook and says "execute it for app X":
 - Steps marked **(human)** require dashboard / browser access you don't have. Walk the user through them with precise click paths; verify their output before moving on.
 - Steps NOT marked **(human)** are yours: create files exactly as shown, init git, run `git push`.
 - Each code block is copy-paste-ready; do not paraphrase or "modernize" the snippets without checking with the user first.
-- After step 10 verification passes, you're done.
+- **Section 11a is non-negotiable: TypeScript MUST be 4.9.x, not 5.x.** The whole point of that warning is that the failure is invisible locally and only shows up as a silent non-deploy on Vercel.
+- After ANY dependency change, verify with `rm -rf node_modules && npm ci && CI=true npm run build` — `npm install` alone will not catch peer-dep conflicts that break Vercel.
+- Sections 1-10 = fresh-app setup. Sections 11-13 = enhancements; only run them if the user asks, and run each sub-step then build before moving on.
+- After step 10 (or, for Phase 2, after a clean `npm ci` build) passes, you're done.
