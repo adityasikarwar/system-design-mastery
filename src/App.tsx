@@ -26,10 +26,12 @@ export default function App() {
   const [flowIdx, setFlowIdx] = useState(0);
   // Mock interview timer
   const [mockIdx, setMockIdx] = useState(0);
+  const [mockStage, setMockStage] = useState<"idle" | "running" | "scoring">("idle");
+  const [mockPhase, setMockPhase] = useState(0);
   const [mockRunning, setMockRunning] = useState(false);
   const [mockTime, setMockTime] = useState(0);
+  const [mockElapsed, setMockElapsed] = useState(0);
   const [mockScores, setMockScores] = useState<Record<string, number>>({});
-  const [mockDone, setMockDone] = useState(false);
   // Search & filter
   const [searchQ, setSearchQ] = useState("");
   const [showWeak, setShowWeak] = useState(false);
@@ -130,14 +132,31 @@ export default function App() {
     }
   };
 
-  // Mock interview timer effect
+  // Mock interview phase timer — ticks down the current RESHADED phase.
   useEffect(() => {
-    let interval;
-    if (mockRunning && mockTime > 0) {
-      interval = setInterval(() => setMockTime(t => { if (t <= 1) { setMockRunning(false); return 0; } return t - 1; }), 1000);
-    }
+    if (mockStage !== "running" || !mockRunning || mockTime <= 0) return;
+    const interval = setInterval(() => {
+      setMockElapsed(e => e + 1);
+      setMockTime(t => Math.max(0, t - 1));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [mockRunning, mockTime]);
+  }, [mockStage, mockRunning, mockTime]);
+
+  // When a phase's timer hits 0, auto-advance to the next phase (or finish).
+  useEffect(() => {
+    if (mockStage !== "running" || mockTime > 0 || !mockRunning) return;
+    const mp = MOCK_PROBLEMS[mockIdx];
+    const phaseSec = (i: number) =>
+      Math.round(parseInt(RESHADED[i].t.replace(/[^0-9]/g, ""), 10) * (mp.time / 45) * 60);
+    if (mockPhase < RESHADED.length - 1) {
+      const next = mockPhase + 1;
+      setMockPhase(next);
+      setMockTime(phaseSec(next));
+    } else {
+      setMockStage("scoring");
+      setMockRunning(false);
+    }
+  }, [mockStage, mockTime, mockRunning, mockPhase, mockIdx]);
 
   const tog = (id) => save({ ...data, done: { ...data.done, [id]: !data.done[id] } });
   const togW = (id) => {
@@ -153,6 +172,15 @@ export default function App() {
     save({ ...data, theme: next });
   };
   const reset = () => save({ done: {}, notes: {}, weak: {}, sr: {} });
+
+  const saveMockAttempt = (problemId: string, scores: Record<string, number>, durationSec: number) => {
+    const vals = Object.values(scores);
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    const attempt = { ts: Date.now(), scores: { ...scores }, avg, durationSec };
+    const all = data.mockAttempts || {};
+    const prev = all[problemId] || [];
+    save({ ...data, mockAttempts: { ...all, [problemId]: [...prev, attempt] } });
+  };
 
   if (isSupabaseConfigured() && authReady && !session) return <LoginGate C={C} />;
 
@@ -1069,68 +1097,159 @@ export default function App() {
         {/* ═══ MOCK INTERVIEW TIMER ═══ */}
         {view === "mock" && !showWeak && (() => {
           const mp = MOCK_PROBLEMS[mockIdx];
-          const mins = Math.floor(mockTime / 60);
-          const secs = mockTime % 60;
-          const totalSec = mp.time * 60;
-          const pctLeft = totalSec > 0 ? (mockTime / totalSec) * 100 : 0;
-          const timerColor = pctLeft > 50 ? C.green : pctLeft > 20 ? C.accent : C.red;
-          const avgScore = Object.keys(mockScores).length > 0 ? (Object.values(mockScores).reduce((a, b) => a + b, 0) / Object.keys(mockScores).length).toFixed(1) : null;
+          const phaseSec = (i) => Math.round(parseInt(RESHADED[i].t.replace(/[^0-9]/g, ""), 10) * (mp.time / 45) * 60);
+          const fmt = (s) => String(Math.floor(Math.max(0, s) / 60)).padStart(2, "0") + ":" + String(Math.max(0, s) % 60).padStart(2, "0");
+          const ph = RESHADED[mockPhase];
+          const phTotal = phaseSec(mockPhase);
+          const phPct = phTotal > 0 ? (mockTime / phTotal) * 100 : 0;
+          const timerColor = phPct > 50 ? C.green : phPct > 20 ? C.accent : C.red;
+          const scoreVals = Object.values(mockScores);
+          const avgScore = scoreVals.length ? (scoreVals.reduce((a, b) => a + b, 0) / scoreVals.length) : null;
+          const history = (data.mockAttempts || {})[mp.id] || [];
+          const bestAvg = history.length ? Math.max(...history.map(a => a.avg)) : 0;
+
+          const startMock = () => { setMockPhase(0); setMockTime(phaseSec(0)); setMockElapsed(0); setMockScores({}); setMockStage("running"); setMockRunning(true); };
+          const advancePhase = () => {
+            if (mockPhase < RESHADED.length - 1) { const n = mockPhase + 1; setMockPhase(n); setMockTime(phaseSec(n)); }
+            else { setMockStage("scoring"); setMockRunning(false); }
+          };
+          const finishEarly = () => { setMockStage("scoring"); setMockRunning(false); };
+          const resetMock = () => { setMockStage("idle"); setMockRunning(false); setMockTime(0); setMockPhase(0); setMockElapsed(0); setMockScores({}); };
+          const selectProblem = (i) => { setMockIdx(i); resetMock(); };
+          const verdict = (v) => v >= 4.5 ? "🎉 Strong hire!" : v >= 3.5 ? "👍 Hire — minor gaps" : v >= 2.5 ? "⚠️ Borderline — drill weak areas" : "📚 Keep practicing — review the Method tab";
+
           return (
             <div className="fu">
+              {/* Header */}
               <div style={{ ...cs, padding: "16px 18px", marginBottom: 16, background: "linear-gradient(135deg, " + C.card + ", rgba(245,158,11,0.04))", borderColor: C.accent + "15" }}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: C.headText, fontFamily: "'Outfit', sans-serif" }}>⏱️ Mock Interview Practice</div>
-                <div style={{ fontSize: 14, color: C.dim, marginTop: 3, fontFamily: "'DM Sans', sans-serif" }}>Pick a problem, start the timer, and grade yourself honestly</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: C.headText, fontFamily: "'Outfit', sans-serif" }}>⏱️ Guided Mock Interview</div>
+                <div style={{ fontSize: 14, color: C.dim, marginTop: 3, fontFamily: "'DM Sans', sans-serif" }}>Walk the RESHADED phases against the clock, then score yourself and track improvement</div>
               </div>
 
-              {/* Problem selector */}
-              <div style={{ display: "flex", gap: 5, marginBottom: 14, overflowX: "auto", paddingBottom: 4 }}>
-                {MOCK_PROBLEMS.map((p, i) => (
-                  <button key={p.id} className="btn" onClick={() => { setMockIdx(i); setMockRunning(false); setMockTime(0); setMockScores({}); setMockDone(false); }} style={{
-                    flex: "0 0 auto", padding: "6px 12px", borderRadius: 8, fontSize: 13,
-                    fontFamily: "'DM Sans', sans-serif", fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer",
-                    background: mockIdx === i ? (DC[p.d]?.bg || C.card2) : "transparent",
-                    border: "1px solid " + (mockIdx === i ? (DC[p.d]?.text || C.accent) + "40" : C.border),
-                    color: mockIdx === i ? (DC[p.d]?.text || C.accent) : C.dim,
-                  }}>{p.n}</button>
-                ))}
-              </div>
+              {/* Problem selector — idle only */}
+              {mockStage === "idle" && (
+                <div style={{ display: "flex", gap: 5, marginBottom: 14, overflowX: "auto", paddingBottom: 4 }}>
+                  {MOCK_PROBLEMS.map((p, i) => (
+                    <button key={p.id} className="btn" onClick={() => selectProblem(i)} style={{
+                      flex: "0 0 auto", padding: "6px 12px", borderRadius: 8, fontSize: 13,
+                      fontFamily: "'DM Sans', sans-serif", fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer",
+                      background: mockIdx === i ? (DC[p.d]?.bg || C.card2) : "transparent",
+                      border: "1px solid " + (mockIdx === i ? (DC[p.d]?.text || C.accent) + "40" : C.border),
+                      color: mockIdx === i ? (DC[p.d]?.text || C.accent) : C.dim,
+                    }}>{p.n}</button>
+                  ))}
+                </div>
+              )}
 
-              {/* Timer display */}
-              <div className="card" style={{ ...cs, padding: "24px 20px", marginBottom: 14, textAlign: "center", background: "linear-gradient(135deg, " + C.card + ", " + timerColor + "04)" }}>
-                <Bdg t={mp.d} c={DC[mp.d]?.text || C.accent} bg={DC[mp.d]?.bg} />
-                <div style={{ fontSize: 25, fontWeight: 800, color: C.headText, fontFamily: "'Outfit', sans-serif", marginTop: 10 }}>{mp.n}</div>
-                <div style={{ fontSize: 48, fontWeight: 800, color: timerColor, fontFamily: "'Outfit', sans-serif", marginTop: 12, fontVariantNumeric: "tabular-nums" }}>
-                  {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
-                </div>
-                <div style={{ maxWidth: 300, margin: "12px auto 0", background: C.muted, borderRadius: 6, height: 6, overflow: "hidden" }}>
-                  <div style={{ width: pctLeft + "%", background: timerColor, height: "100%", transition: "width 1s linear", borderRadius: 6 }} />
-                </div>
-                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16 }}>
-                  {!mockRunning && mockTime === 0 && !mockDone && (
-                    <button className="btn" onClick={() => { setMockTime(mp.time * 60); setMockRunning(true); setMockScores({}); setMockDone(false); }} style={{ padding: "10px 28px", borderRadius: 10, background: "linear-gradient(135deg, " + C.green + "20, " + C.green + "10)", border: "1px solid " + C.green + "30", color: C.green, fontSize: 16, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, cursor: "pointer" }}>▶ Start ({mp.time} min)</button>
-                  )}
-                  {mockRunning && (
-                    <>
-                      <button className="btn" onClick={() => setMockRunning(false)} style={{ padding: "10px 20px", borderRadius: 10, background: C.accent + "12", border: "1px solid " + C.accent + "30", color: C.accent, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>⏸ Pause</button>
-                      <button className="btn" onClick={() => { setMockRunning(false); setMockDone(true); }} style={{ padding: "10px 20px", borderRadius: 10, background: C.red + "12", border: "1px solid " + C.red + "30", color: C.red, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>⏹ Finish</button>
-                    </>
-                  )}
-                  {!mockRunning && mockTime > 0 && !mockDone && (
-                    <>
-                      <button className="btn" onClick={() => setMockRunning(true)} style={{ padding: "10px 20px", borderRadius: 10, background: C.green + "12", border: "1px solid " + C.green + "30", color: C.green, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>▶ Resume</button>
-                      <button className="btn" onClick={() => { setMockRunning(false); setMockDone(true); }} style={{ padding: "10px 20px", borderRadius: 10, background: C.blue + "12", border: "1px solid " + C.blue + "30", color: C.blue, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>✓ Done, Grade Me</button>
-                    </>
-                  )}
-                  {(mockDone || (mockTime === 0 && Object.keys(mockScores).length > 0)) && (
-                    <button className="btn" onClick={() => { setMockTime(0); setMockScores({}); setMockDone(false); }} style={{ padding: "10px 20px", borderRadius: 10, background: C.purple + "12", border: "1px solid " + C.purple + "30", color: C.purple, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>🔄 Reset</button>
-                  )}
-                </div>
-              </div>
-
-              {/* Self-assessment rubric */}
-              {(mockDone || (mockTime === 0 && mockRunning === false && Object.keys(mockScores).length > 0)) && (
+              {/* ───── IDLE ───── */}
+              {mockStage === "idle" && (
                 <div className="fu">
-                  <div style={{ fontSize: 13, color: C.dim, textTransform: "uppercase", letterSpacing: "2px", marginBottom: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>📝 Self-Assessment</div>
+                  <div className="card" style={{ ...cs, padding: "22px 20px", marginBottom: 14, textAlign: "center" }}>
+                    <Bdg t={mp.d} c={DC[mp.d]?.text || C.accent} bg={DC[mp.d]?.bg} />
+                    <div style={{ fontSize: 25, fontWeight: 800, color: C.headText, fontFamily: "'Outfit', sans-serif", marginTop: 10 }}>{mp.n}</div>
+                    <div style={{ fontSize: 14, color: C.dim, marginTop: 4, fontFamily: "'DM Sans', sans-serif" }}>{mp.time} minutes · {RESHADED.length} guided phases</div>
+                    <button className="btn" onClick={startMock} style={{ marginTop: 16, padding: "11px 32px", borderRadius: 10, background: "linear-gradient(135deg, " + C.green + ", #059669)", border: "none", color: "#fff", fontSize: 16, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, cursor: "pointer" }}>▶ Start Guided Mock</button>
+                  </div>
+
+                  {/* Phase preview */}
+                  <div style={{ ...cs, padding: "14px 16px", marginBottom: 14 }}>
+                    <div style={{ fontSize: 13, color: C.dim, fontWeight: 700, marginBottom: 10, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>The 8 phases (scaled to {mp.time} min)</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {RESHADED.map((r, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 9px", borderRadius: 7, background: r.c + "0e", border: "1px solid " + r.c + "25" }}>
+                          <span style={{ width: 18, height: 18, borderRadius: 5, background: r.c, color: "#000", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{r.l}</span>
+                          <span style={{ fontSize: 12, color: C.subText, fontFamily: "'DM Sans', sans-serif" }}>{r.n}</span>
+                          <span style={{ fontSize: 11, color: r.c, fontWeight: 700 }}>{Math.round(phaseSec(i) / 60)}m</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* History */}
+                  {history.length > 0 && (
+                    <div style={{ ...cs, padding: "14px 16px", marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 4 }}>
+                        <div style={{ fontSize: 13, color: C.dim, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>📈 Your history — {mp.n}</div>
+                        <div style={{ fontSize: 12, color: C.dim, fontFamily: "'DM Sans', sans-serif" }}>{history.length} attempt{history.length > 1 ? "s" : ""} · best <span style={{ color: C.green, fontWeight: 700 }}>{bestAvg.toFixed(1)}/5</span></div>
+                      </div>
+                      {history.slice().reverse().map((a) => {
+                        const col = a.avg >= 4 ? C.green : a.avg >= 2.5 ? C.accent : C.red;
+                        return (
+                          <div key={a.ts} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid " + C.border }}>
+                            <span style={{ fontSize: 12, color: C.dim, fontFamily: "'DM Sans', sans-serif", width: 92, flexShrink: 0 }}>{new Date(a.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+                            <div style={{ flex: 1, height: 8, background: C.muted, borderRadius: 4, overflow: "hidden" }}>
+                              <div style={{ width: (a.avg / 5 * 100) + "%", height: "100%", background: col, borderRadius: 4 }} />
+                            </div>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: col, fontFamily: "'Outfit', sans-serif", width: 42, textAlign: "right" }}>{a.avg.toFixed(1)}/5</span>
+                            <span style={{ fontSize: 11, color: C.dim, fontFamily: "'DM Sans', sans-serif", width: 48, textAlign: "right" }}>{fmt(a.durationSec)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Grading criteria */}
+                  <div style={{ ...cs, padding: "14px 16px" }}>
+                    <div style={{ fontSize: 13, color: C.dim, fontWeight: 700, marginBottom: 8, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>You'll grade yourself on</div>
+                    {mp.rubric.map((r, ri) => (
+                      <div key={ri} style={{ display: "flex", gap: 6, marginBottom: 3, alignItems: "center" }}>
+                        <span style={{ width: 18, height: 18, borderRadius: 5, background: C.accent + "10", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: C.accent, fontWeight: 700, flexShrink: 0 }}>{ri + 1}</span>
+                        <span style={{ fontSize: 14, color: C.subText, fontFamily: "'DM Sans', sans-serif" }}>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ───── RUNNING ───── */}
+              {mockStage === "running" && (
+                <div className="fu">
+                  {/* Phase progress */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                    {RESHADED.map((r, i) => (
+                      <div key={i} title={r.n} style={{ flex: 1, height: 6, borderRadius: 3, background: i <= mockPhase ? r.c : C.muted, opacity: i <= mockPhase ? 1 : 0.5, transition: "all 0.3s" }} />
+                    ))}
+                  </div>
+
+                  {/* Timer + current phase */}
+                  <div className="card" style={{ ...cs, padding: "22px 20px", marginBottom: 12, textAlign: "center", background: "linear-gradient(135deg, " + C.card + ", " + timerColor + "06)" }}>
+                    <div style={{ fontSize: 12, color: C.dim, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{mp.n} · Phase {mockPhase + 1} of {RESHADED.length}</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8 }}>
+                      <span style={{ width: 34, height: 34, borderRadius: 9, background: ph.c, color: "#000", fontSize: 18, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{ph.l}</span>
+                      <span style={{ fontSize: 23, fontWeight: 800, color: C.headText, fontFamily: "'Outfit', sans-serif" }}>{ph.n}</span>
+                    </div>
+                    <div style={{ fontSize: 48, fontWeight: 800, color: timerColor, fontFamily: "'Outfit', sans-serif", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{fmt(mockTime)}</div>
+                    <div style={{ maxWidth: 320, margin: "10px auto 0", background: C.muted, borderRadius: 6, height: 6, overflow: "hidden" }}>
+                      <div style={{ width: Math.max(0, phPct) + "%", background: timerColor, height: "100%", transition: "width 1s linear", borderRadius: 6 }} />
+                    </div>
+                    <div style={{ fontSize: 12, color: C.dim, marginTop: 8, fontFamily: "'DM Sans', sans-serif" }}>Total elapsed: {fmt(mockElapsed)}</div>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14, flexWrap: "wrap" }}>
+                      <button className="btn" onClick={() => setMockRunning(!mockRunning)} style={{ padding: "9px 18px", borderRadius: 9, background: C.accent + "12", border: "1px solid " + C.accent + "30", color: C.accent, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>{mockRunning ? "⏸ Pause" : "▶ Resume"}</button>
+                      <button className="btn" onClick={advancePhase} style={{ padding: "9px 18px", borderRadius: 9, background: C.green + "12", border: "1px solid " + C.green + "30", color: C.green, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>{mockPhase < RESHADED.length - 1 ? "Next Phase →" : "Finish →"}</button>
+                      <button className="btn" onClick={finishEarly} style={{ padding: "9px 18px", borderRadius: 9, background: C.red + "12", border: "1px solid " + C.red + "30", color: C.red, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>⏹ Finish &amp; Score</button>
+                    </div>
+                  </div>
+
+                  {/* Current phase guidance */}
+                  <div style={{ ...cs, padding: "16px 18px", borderLeft: "3px solid " + ph.c }}>
+                    <div style={{ fontSize: 15, color: C.text, lineHeight: 1.7, fontFamily: "'DM Sans', sans-serif", marginBottom: 12 }}>{ph.d}</div>
+                    <div style={{ fontSize: 12, color: C.dim, fontWeight: 700, marginBottom: 8, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Cover these out loud</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {ph.q.map((q, qi) => (
+                        <span key={qi} style={{ fontSize: 13, padding: "5px 11px", borderRadius: 7, background: ph.c + "0e", border: "1px solid " + ph.c + "25", color: C.subText, fontFamily: "'DM Sans', sans-serif" }}>{q}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ───── SCORING ───── */}
+              {mockStage === "scoring" && (
+                <div className="fu">
+                  <div style={{ ...cs, padding: "14px 16px", marginBottom: 12, textAlign: "center" }}>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: C.headText, fontFamily: "'Outfit', sans-serif" }}>How did "{mp.n}" go?</div>
+                    <div style={{ fontSize: 13, color: C.dim, marginTop: 3, fontFamily: "'DM Sans', sans-serif" }}>Score yourself honestly — you finished in {fmt(mockElapsed)}</div>
+                  </div>
                   {mp.rubric.map((r, ri) => (
                     <div key={ri} className="card" style={{ ...cs, padding: "12px 16px", marginBottom: 6 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1150,28 +1269,17 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                  {avgScore && (
-                    <div style={{ ...cs, padding: "16px", marginTop: 10, textAlign: "center", background: "linear-gradient(135deg, " + C.card + ", " + (parseFloat(avgScore) >= 4 ? C.green : parseFloat(avgScore) >= 2.5 ? C.accent : C.red) + "06)" }}>
+                  {avgScore !== null && (
+                    <div style={{ ...cs, padding: "16px", marginTop: 10, textAlign: "center", background: "linear-gradient(135deg, " + C.card + ", " + (avgScore >= 4 ? C.green : avgScore >= 2.5 ? C.accent : C.red) + "06)" }}>
                       <div style={{ fontSize: 13, color: C.dim, fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "1px" }}>Overall Score</div>
-                      <div style={{ fontSize: 36, fontWeight: 800, color: parseFloat(avgScore) >= 4 ? C.green : parseFloat(avgScore) >= 2.5 ? C.accent : C.red, fontFamily: "'Outfit', sans-serif", marginTop: 4 }}>{avgScore}/5</div>
-                      <div style={{ fontSize: 14, color: C.dim, fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>
-                        {parseFloat(avgScore) >= 4.5 ? "🎉 Strong hire!" : parseFloat(avgScore) >= 3.5 ? "👍 Hire — minor areas to improve" : parseFloat(avgScore) >= 2.5 ? "⚠️ Borderline — practice weak areas" : "📚 Keep studying — review the method tab"}
-                      </div>
+                      <div style={{ fontSize: 36, fontWeight: 800, color: avgScore >= 4 ? C.green : avgScore >= 2.5 ? C.accent : C.red, fontFamily: "'Outfit', sans-serif", marginTop: 4 }}>{avgScore.toFixed(1)}/5</div>
+                      <div style={{ fontSize: 14, color: C.dim, fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>{verdict(avgScore)}</div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Rubric reference */}
-              {!mockDone && mockTime === 0 && Object.keys(mockScores).length === 0 && (
-                <div style={{ ...cs, padding: "14px 16px", marginTop: 8 }}>
-                  <div style={{ fontSize: 13, color: C.dim, fontWeight: 700, marginBottom: 8, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Grading Criteria</div>
-                  {mp.rubric.map((r, ri) => (
-                    <div key={ri} style={{ display: "flex", gap: 6, marginBottom: 3, alignItems: "center" }}>
-                      <span style={{ width: 18, height: 18, borderRadius: 5, background: C.accent + "10", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: C.accent, fontWeight: 700, flexShrink: 0 }}>{ri + 1}</span>
-                      <span style={{ fontSize: 14, color: C.subText, fontFamily: "'DM Sans', sans-serif" }}>{r}</span>
-                    </div>
-                  ))}
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button className="btn" disabled={scoreVals.length < mp.rubric.length} onClick={() => { saveMockAttempt(mp.id, mockScores, mockElapsed); resetMock(); }} style={{ flex: 1, padding: "11px", borderRadius: 10, background: scoreVals.length < mp.rubric.length ? C.muted : "linear-gradient(135deg, " + C.green + ", #059669)", border: "none", color: scoreVals.length < mp.rubric.length ? C.dim : "#fff", fontSize: 15, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, cursor: scoreVals.length < mp.rubric.length ? "not-allowed" : "pointer" }}>{scoreVals.length < mp.rubric.length ? "Score all " + mp.rubric.length + " criteria" : "💾 Save Attempt"}</button>
+                    <button className="btn" onClick={resetMock} style={{ padding: "11px 18px", borderRadius: 10, background: "transparent", border: "1px solid " + C.border, color: C.dim, fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: "pointer" }}>Discard</button>
+                  </div>
                 </div>
               )}
             </div>

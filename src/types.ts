@@ -9,12 +9,21 @@ export interface SREntry {
   lastReview: number;
 }
 
+// One saved guided-mock attempt.
+export interface MockAttempt {
+  ts: number;                       // when the attempt finished
+  scores: Record<number, number>;   // rubric index -> 1-5
+  avg: number;                      // average rubric score
+  durationSec: number;              // actual time spent across all phases
+}
+
 // The single JSON blob persisted per user (localStorage or Supabase).
 export interface UserData {
   done: Record<string, boolean>;
   notes: Record<string, string>;
   weak: Record<string, boolean>;
   sr: Record<string, SREntry>;
+  mockAttempts?: Record<string, MockAttempt[]>; // keyed by mock problem id
   theme?: ThemeName;
 }
 
